@@ -26,6 +26,8 @@ def func(inp, net=None, target=None):
         Logit of the `target` class.
     """
     out = net(inp)
+    
+    print(f"Original output of model or the logits: {out.shape}")
     logit = out[0, target]
 
     return logit
@@ -58,8 +60,12 @@ def compute_integrated_gradients(inp, baseline, net, target, n_steps=100):
     inp_grad : torch.Tensor
         Gradient with respect to the `inp` tensor. Same shape as `inp`.
     """
+    
+    print(f"original inp: {inp} of shape: {inp.shape}")
     path = [baseline + a * (inp - baseline) for a in np.linspace(0, 1, n_steps)]
+    print(f"path 0  : {path[0].shape} of full length length: {len(path)}")
     grads = [compute_gradient(func, x, net=net, target=target) for x in path]
+    print(f"grads length and shape:{len(grads)} and {grads[0].shape}")
 
     ig = (inp - baseline) * torch.cat(grads[:-1]).mean(dim=0, keepdims=True)
 
@@ -72,7 +78,7 @@ if __name__ == "__main__":
     tensor = read_image("img.jpg")
     arr = to_array(tensor)
 
-    n_steps = 100
+    n_steps = 10
     baseline = -1.5 * torch.ones_like(tensor)
 
     ig, inp_grad = compute_integrated_gradients(

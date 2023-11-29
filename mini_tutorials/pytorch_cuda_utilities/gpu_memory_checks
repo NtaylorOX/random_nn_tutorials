@@ -1,0 +1,76 @@
+def get_gpu_list( 
+    n_gpus,
+    kill_my_gpus,
+    reserved_gpus,
+    gpu_check_duration,
+    gpu_usage_limit,
+):
+    """Retrieves list of freely usable GPUs
+    
+    Args:
+        n_gpus (int): number of GPUs needed
+        kill_my_gpus (bool): whether to kill GPUs 2 and 3
+        reserved_gpus (list): list of reserved device IDs
+        gpu_check_duration (int): GPU observation time in seconds
+        gpu_usage_limit (int): free memory required on each GPU in MB
+    """
+
+    # Kill processes on GPUs 0 to 3
+    if kill_my_gpus:
+        os.system("""kill $(nvidia-smi | awk '$5=="PID" {p=1} p && $2 >= 0 && $2 <= 3 {print $5}')""")
+        print('')
+
+    # Get unavailable GPUs
+    gpu_usage = np.zeros((gpu_check_duration, 10), dtype='uint16')
+    for s in range(gpu_check_duration):
+        sys.stdout.write('\r')
+        sys.stdout.write(
+            f'\tChecking which GPUs are available for {gpu_check_duration-s} seconds...'
+        )
+        sys.stdout.flush()
+        gpu_usage[s, :] = get_gpu_memory()
+        time.sleep(1)
+    max_gpu_usage = np.amax(gpu_usage, axis=0)
+    hidden_used_gpus = [i for i, x in enumerate(max_gpu_usage > gpu_usage_limit) if x]
+
+    # Get possibly available GPUs
+    possibly_available_gpus = getAvailable(
+        limit=100, 
+        memoryFree=gpu_usage_limit
+    )
+    
+    # Get available GPUs
+    gpu_device_ids = [
+        gpu 
+        for gpu in possibly_available_gpus
+        if gpu not in hidden_used_gpus and gpu not in reserved_gpus
+    ]
+
+    if len(gpu_device_ids) < n_gpus:
+        raise RuntimeError('Too few GPUs available')
+
+    return gpu_device_ids[:n_gpus]
+
+def get_gpu_memory(): 
+    """Gets used GPU memory
+    
+    Returns:
+        memory_use_values (list): GPU memory usage in MB 
+            for all GPU devices"""
+
+    # Create output separation lambda
+    output_to_list = lambda x: x.decode('ascii').split('\n')[:-1]
+
+    # Define command for memory retrieval
+    COMMAND = "nvidia-smi --query-gpu=memory.used --format=csv"
+
+    # Get memory
+    try:
+        memory_use_info = output_to_list(sp.check_output(COMMAND.split(),stderr=sp.STDOUT))[1:]
+    except sp.CalledProcessError as e:
+        raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
+    
+    #Format output
+    memory_use_values = [int(x.split()[0]) for i, x in enumerate(memory_use_info)]
+
+    return memory_use_values
